@@ -1,6 +1,7 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import router from './router';
-import sequelize from './db/db';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 
