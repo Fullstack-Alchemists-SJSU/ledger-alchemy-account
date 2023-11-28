@@ -1,32 +1,22 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import cors from 'cors';
-
-import express, { Request, Response } from 'express';
-import { Products, CountryCode, AccountBase } from 'plaid';
+import { Products, CountryCode } from 'plaid';
 import sequelize from '../../db/db';
 import BankAccount from '../../db/models/BankAccount';
 import plaidClient from '../../utils/plaidClient';
-
-const app = express();
-const port = process.env.PORT || 3000;
-app.use(cors());
-app.use(express.json());
+import { errorResponses, responseWithData, successResponses } from '../../utils/responses';
+import { hashAccessToken } from '../../utils/bcrypt';
 
 sequelize.sync({ alter: true }).then(() => {
     console.log('Database synchronized');
 });
 
-app.get('/', (req: Request, res: Response) => {
-    res.send('Account Microservice is running');
-});
+export const createLinkToken = async (req: any, res: any) => {
+    // if (!req.body) {
+    //     return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    // }
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
-
-app.post('/create_link_token', async (req: Request, res: Response) => {
     try {
         const response = await plaidClient.linkTokenCreate({
             user: { client_user_id: '1', }, // fetch actual user ID from table
@@ -38,19 +28,26 @@ app.post('/create_link_token', async (req: Request, res: Response) => {
 
         console.log("create_link_token response: ", response.data);
         res.json(response.data);
+        res.status(201).json(successResponses.LINK_TOKEN_CREATED);
     } catch (error) {
-        console.error('Error creating link token:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error in token exchange:', error);
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
     }
-});
+};
 
-app.post('/exchange_public_token', async (req: Request, res: Response) => {
+export const exchangePublicToken = async (req: any, res: any) => {
+    // if (!req.body) {
+    //     return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    // }
     const { public_token } = req.body;
     try {
         const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
         const access_token = exchangeResponse.data.access_token;
 
         console.log("access_token: ", access_token);
+
+        // hash access token before storing in database
+        const hashedAccessToken = await hashAccessToken(access_token);
 
         // Fetch account details
         const accountsResponse = await plaidClient.accountsGet({ access_token });
@@ -61,15 +58,16 @@ app.post('/exchange_public_token', async (req: Request, res: Response) => {
 
         // Store access token and account details in the database
         for (const account of accounts) {
-            await storeAccountData(1 /*user id*/, access_token, account);
+            await storeAccountData(1 /*user id*/, hashedAccessToken, account);
         }
 
         res.json({ message: 'Account linked and data stored successfully.' });
+        res.status(201).json(successResponses.ACCESS_TOKEN_CREATED);
     } catch (error) {
         console.error('Error in token exchange:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
     }
-});
+};
 
 // Function to store access token and account details
 async function storeAccountData(userId: number, accessToken: string, account: any) {
