@@ -1,35 +1,22 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import cors from 'cors';
-
-import express, { Request, Response } from 'express';
-import { Products, CountryCode, AccountBase } from 'plaid';
-import sequelize from '../../db/db';
+import { Products, CountryCode } from 'plaid';
 import BankAccount from '../../db/models/BankAccount';
 import plaidClient from '../../utils/plaidClient';
+import { errorResponses, responseWithData, successResponses } from '../../utils/responses';
+import { hashAccessToken } from '../../utils/bcrypt';
 
-const app = express();
-const port = process.env.PORT || 3000;
-app.use(cors());
-app.use(express.json());
-
-sequelize.sync({ alter: true }).then(() => {
-    console.log('Database synchronized');
-});
-
-app.get('/', (req: Request, res: Response) => {
-    res.send('Account Microservice is running');
-});
-
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
-
-app.post('/create_link_token', async (req: Request, res: Response) => {
+export const createLinkToken = async (req: any, res: any) => {
+    const { userSub } = req.body;
+    if (!userSub) {
+        return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    }
     try {
         const response = await plaidClient.linkTokenCreate({
-            user: { client_user_id: '1', }, // fetch actual user ID from table
+            user: {
+                client_user_id: userSub
+            },
             client_name: 'Ledger Alchemy',
             products: [Products.Auth, Products.Transactions],
             country_codes: [CountryCode.Us],
@@ -39,18 +26,24 @@ app.post('/create_link_token', async (req: Request, res: Response) => {
         console.log("create_link_token response: ", response.data);
         res.json(response.data);
     } catch (error) {
-        console.error('Error creating link token:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error in token exchange:', error);
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
     }
-});
+};
 
-app.post('/exchange_public_token', async (req: Request, res: Response) => {
-    const { public_token } = req.body;
+export const exchangePublicToken = async (req: any, res: any) => {
+    const { public_token, userSub } = req.body;
+    if (!userSub || !public_token) {
+        return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    }
     try {
         const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
         const access_token = exchangeResponse.data.access_token;
 
         console.log("access_token: ", access_token);
+
+        // hash access token before storing in database
+        // const hashedAccessToken = await hashAccessToken(access_token);
 
         // Fetch account details
         const accountsResponse = await plaidClient.accountsGet({ access_token });
@@ -61,22 +54,56 @@ app.post('/exchange_public_token', async (req: Request, res: Response) => {
 
         // Store access token and account details in the database
         for (const account of accounts) {
-            await storeAccountData(1 /*user id*/, access_token, account);
+            await storeAccountData(userSub, access_token, account);
         }
 
-        res.json({ message: 'Account linked and data stored successfully.' });
+        res.json(accounts);
+        // res.json({ message: 'Account linked and data stored successfully.' });
     } catch (error) {
         console.error('Error in token exchange:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
     }
-});
+};
+
+export async function getAccountData(req: any, res: any) {
+    const userSub = req.body.userSub;
+
+    try {
+        const accounts = await BankAccount.findAll({
+            where: { user_id: userSub },
+        });
+
+        if (accounts.length === 0) {
+            return res.status(404).json({ message: 'No accounts found for this user.' });
+        }
+
+        // Collect unique access tokens
+        const uniqueAccessTokens = new Set(accounts.map(account => account.dataValues.access_token));
+
+        // Fetch account details for each unique token
+        let allAccountsData: any[] = [];
+        for (const access_token of uniqueAccessTokens) {
+            console.log("access_token in get account data: ", access_token);
+            const accountsResponse = await plaidClient.accountsGet({ access_token: access_token });
+            allAccountsData = allAccountsData.concat(accountsResponse.data.accounts);
+        }
+
+        console.log("All Accounts Data: ", allAccountsData);
+
+        // Return combined account data
+        res.json(allAccountsData);
+    } catch (error) {
+        console.error('Error in fetching accounts Data:', error);
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
+    }
+}
 
 // Function to store access token and account details
-async function storeAccountData(userId: number, accessToken: string, account: any) {
+async function storeAccountData(userSub: number, accessToken: string, account: any) {
     const { account_id } = account;
 
     await BankAccount.create({
-        user_id: userId,
+        user_id: userSub,
         access_token: accessToken,
         account_id: account_id,
     });
