@@ -3,11 +3,7 @@ import sequelize from '../db';
 
 const BankAccount = sequelize.define('BankAccount', {
     user_id: {
-        type: DataTypes.INTEGER,
-        references: {
-            model: 'Users', // Name of the Users model
-            key: 'user_id',
-        },
+        type: DataTypes.STRING,
     },
     access_token: {
         type: DataTypes.STRING,

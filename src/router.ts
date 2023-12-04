@@ -1,5 +1,5 @@
 import express from 'express';
-import { createLinkToken, exchangePublicToken } from './controllers/v1/account_controller';
+import { createLinkToken, exchangePublicToken, getAccountData } from './controllers/v1/account_controller';
 
 const router = (app: express.Express) => {
     const baseApiRouter = express.Router();
@@ -13,8 +13,9 @@ const router = (app: express.Express) => {
     /**
      * Account API Routes
      */
-    accountRouter.post('/create_link_token', createLinkToken);
+    accountRouter.post('/', createLinkToken);
     accountRouter.post('/exchange_public_token', exchangePublicToken);
+    accountRouter.post('/get_accounts', getAccountData);
 
     v1Router.use('/account', accountRouter);
 

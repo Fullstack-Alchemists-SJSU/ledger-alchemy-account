@@ -2,24 +2,21 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { Products, CountryCode } from 'plaid';
-import sequelize from '../../db/db';
 import BankAccount from '../../db/models/BankAccount';
 import plaidClient from '../../utils/plaidClient';
 import { errorResponses, responseWithData, successResponses } from '../../utils/responses';
 import { hashAccessToken } from '../../utils/bcrypt';
 
-sequelize.sync({ alter: true }).then(() => {
-    console.log('Database synchronized');
-});
-
 export const createLinkToken = async (req: any, res: any) => {
-    // if (!req.body) {
-    //     return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
-    // }
-
+    const { userSub } = req.body;
+    if (!userSub) {
+        return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    }
     try {
         const response = await plaidClient.linkTokenCreate({
-            user: { client_user_id: '1', }, // fetch actual user ID from table
+            user: {
+                client_user_id: userSub
+            },
             client_name: 'Ledger Alchemy',
             products: [Products.Auth, Products.Transactions],
             country_codes: [CountryCode.Us],
@@ -28,7 +25,6 @@ export const createLinkToken = async (req: any, res: any) => {
 
         console.log("create_link_token response: ", response.data);
         res.json(response.data);
-        res.status(201).json(successResponses.LINK_TOKEN_CREATED);
     } catch (error) {
         console.error('Error in token exchange:', error);
         res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
@@ -36,10 +32,10 @@ export const createLinkToken = async (req: any, res: any) => {
 };
 
 export const exchangePublicToken = async (req: any, res: any) => {
-    // if (!req.body) {
-    //     return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
-    // }
-    const { public_token } = req.body;
+    const { public_token, userSub } = req.body;
+    if (!userSub || !public_token) {
+        return res.status(400).json(errorResponses.INSUFFICIENT_DATA);
+    }
     try {
         const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
         const access_token = exchangeResponse.data.access_token;
@@ -47,7 +43,7 @@ export const exchangePublicToken = async (req: any, res: any) => {
         console.log("access_token: ", access_token);
 
         // hash access token before storing in database
-        const hashedAccessToken = await hashAccessToken(access_token);
+        // const hashedAccessToken = await hashAccessToken(access_token);
 
         // Fetch account details
         const accountsResponse = await plaidClient.accountsGet({ access_token });
@@ -58,23 +54,56 @@ export const exchangePublicToken = async (req: any, res: any) => {
 
         // Store access token and account details in the database
         for (const account of accounts) {
-            await storeAccountData(1 /*user id*/, hashedAccessToken, account);
+            await storeAccountData(userSub, access_token, account);
         }
 
-        res.json({ message: 'Account linked and data stored successfully.' });
-        res.status(201).json(successResponses.ACCESS_TOKEN_CREATED);
+        res.json(accounts);
+        // res.json({ message: 'Account linked and data stored successfully.' });
     } catch (error) {
         console.error('Error in token exchange:', error);
         res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
     }
 };
 
+export async function getAccountData(req: any, res: any) {
+    const userSub = req.body.userSub;
+
+    try {
+        const accounts = await BankAccount.findAll({
+            where: { user_id: userSub },
+        });
+
+        if (accounts.length === 0) {
+            return res.status(404).json({ message: 'No accounts found for this user.' });
+        }
+
+        // Collect unique access tokens
+        const uniqueAccessTokens = new Set(accounts.map(account => account.dataValues.access_token));
+
+        // Fetch account details for each unique token
+        let allAccountsData: any[] = [];
+        for (const access_token of uniqueAccessTokens) {
+            console.log("access_token in get account data: ", access_token);
+            const accountsResponse = await plaidClient.accountsGet({ access_token: access_token });
+            allAccountsData = allAccountsData.concat(accountsResponse.data.accounts);
+        }
+
+        console.log("All Accounts Data: ", allAccountsData);
+
+        // Return combined account data
+        res.json(allAccountsData);
+    } catch (error) {
+        console.error('Error in fetching accounts Data:', error);
+        res.status(400).json(responseWithData(errorResponses.SOMETHING_WENT_WRONG, error));
+    }
+}
+
 // Function to store access token and account details
-async function storeAccountData(userId: number, accessToken: string, account: any) {
+async function storeAccountData(userSub: number, accessToken: string, account: any) {
     const { account_id } = account;
 
     await BankAccount.create({
-        user_id: userId,
+        user_id: userSub,
         access_token: accessToken,
         account_id: account_id,
     });
