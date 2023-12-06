@@ -16,7 +16,7 @@ spec:
         spec:
             containers:
                 - name: ledger-alchemy-account-microservice-container
-                  image: SJC.ocir.io/<DOCKER_OBJECT_STORAGE_NAMESPACE>/account-microservice:1.0.0
+                  image: SJC.ocir.io/<DOCKER_OBJECT_STORAGE_NAMESPACE>/account-microservice:1.0.1
                   imagePullPolicy: 'Always'
                   ports:
                       - containerPort: 3300

@@ -18,5 +18,5 @@ ENV OPENAI_API_KEY=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
 COPY . /home/account-microservice
 WORKDIR /home/account-microservice
 RUN npm install
-EXPOSE 3000
+EXPOSE 3300
 CMD ["npm", "run", "dev"]
