@@ -1,22 +1,23 @@
-import { Sequelize } from 'sequelize';
-import dotenv from 'dotenv';
+import {Sequelize} from 'sequelize'
+require('dotenv').config()
 
-dotenv.config();
+const {DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME} =
+	process.env
 
-const {
-    DB_NAME,
-    DB_USER,
-    DB_PASSWORD,
-    DB_HOST
-} = process.env;
-
-if (!DB_NAME || !DB_USER || !DB_PASSWORD || !DB_HOST) {
-    throw new Error('Please define the DB_NAME, DB_USER, DB_PASSWORD, and DB_HOST environment variables');
+if (!DATABASE_NAME || !DATABASE_USER || !DATABASE_PASSWORD || !DATABASE_HOST) {
+	throw new Error(
+		'Please define the DB_NAME, DB_USER, DB_PASSWORD, and DB_HOST environment variables'
+	)
 }
 
-const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
-    host: DB_HOST,
-    dialect: 'mysql',
-});
+const sequelize = new Sequelize(
+	DATABASE_NAME,
+	DATABASE_USER,
+	DATABASE_PASSWORD,
+	{
+		host: DATABASE_HOST,
+		dialect: 'mysql',
+	}
+)
 
-export default sequelize;
+export default sequelize

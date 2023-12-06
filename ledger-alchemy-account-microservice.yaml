@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: ledger-alchemy-account-microservice-deployment
+    labels:
+        app: ledger-alchemy-account-microservice
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: ledger-alchemy-account-microservice
+    template:
+        metadata:
+            labels:
+                app: ledger-alchemy-account-microservice
+        spec:
+            containers:
+                - name: ledger-alchemy-account-microservice-container
+                  image: SJC.ocir.io/<DOCKER_OBJECT_STORAGE_NAMESPACE>/account-microservice:1.0.0
+                  imagePullPolicy: 'Always'
+                  ports:
+                      - containerPort: 3300
+                  env:
+                      - name: DATABASE_USER
+                        valueFrom:
+                            secretKeyRef:
+                                name: mysql-secret
+                                key: master-username
+                      - name: DATABASE_PASSWORD
+                        valueFrom:
+                            secretKeyRef:
+                                name: mysql-secret
+                                key: master-password
+            imagePullSecrets:
+                - name: ocirsecret
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: ledger-alchemy-account-microservice-service
+spec:
+    selector:
+        app: ledger-alchemy-account-microservice
+    type: ClusterIP
+    ports:
+        - protocol: TCP
+          port: 80
+          targetPort: 3300
