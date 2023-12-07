@@ -4,6 +4,7 @@ import {Products, CountryCode} from 'plaid'
 import BankAccount from '../../db/models/BankAccount'
 import plaidClient from '../../utils/plaidClient'
 import {errorResponses, responseWithData} from '../../utils/responses'
+import redis from '../../utils/redis'
 
 export const createLinkToken = async (req: any, res: any) => {
 	const {userSub} = req.body
@@ -72,6 +73,15 @@ export const exchangePublicToken = async (req: any, res: any) => {
 export async function getAccountData(req: any, res: any) {
 	const userSub = req.body.userSub
 
+	const cacheKey = `get_accounts:${userSub}`
+
+	// Try to fetch data from Redis cache
+	const cachedData = await redis.get(cacheKey)
+	console.log('cachedData: ', cachedData)
+	if (cachedData) {
+		return res.json(JSON.parse(cachedData))
+	}
+
 	try {
 		const accounts = await BankAccount.findAll({
 			where: {user_id: userSub},
@@ -101,6 +111,8 @@ export async function getAccountData(req: any, res: any) {
 		}
 
 		console.log('All Accounts Data: ', allAccountsData)
+
+		redis.set(cacheKey, JSON.stringify(allAccountsData), 'EX', 86400)
 
 		// Return combined account data
 		res.json(allAccountsData)
