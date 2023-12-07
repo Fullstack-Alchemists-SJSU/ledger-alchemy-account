@@ -1,6 +1,6 @@
 {
 	"name": "ledger-alchemy-account",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "",
 	"main": "index.js",
 	"scripts": {
@@ -19,7 +19,6 @@
 		"express-oauth2-jwt-bearer": "^1.6.0",
 		"ioredis": "^5.3.2",
 		"mysql2": "^3.6.3",
-		"node-cache-redis": "^6.4.2",
 		"plaid": "^17.0.0",
 		"sequelize": "^6.35.0"
 	},
